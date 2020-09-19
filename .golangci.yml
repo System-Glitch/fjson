@@ -1,0 +1,16 @@
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  gofmt:
+    simplify: true
+  misspell:
+    locale: US
+
+linters:
+  enable:
+    - gofmt
+    - golint
+    - gocyclo
+    - misspell
+  disable-all: false
+  fast: false
