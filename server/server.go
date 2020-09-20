@@ -21,6 +21,7 @@ var (
 	ErrMarshal   error = errors.New("FJSON marshal error")
 	ErrWrite     error = errors.New("FJSON write error")
 	ErrUnmarshal error = errors.New("FJSON unmarshal error")
+	ErrHandler   error = errors.New("FJSON handler error")
 )
 
 type Server struct {
@@ -28,7 +29,10 @@ type Server struct {
 	newConn  chan net.Conn
 	wg       sync.WaitGroup
 	Timeout  time.Duration
+	Handler  Handler
 }
+
+type Handler func(data interface{}) (interface{}, error)
 
 func scanPack(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	// Scan until 0, marking end of pack.
@@ -46,11 +50,12 @@ func scanPack(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	return 0, nil, nil
 }
 
-func NewServer(timeout time.Duration) *Server {
+func NewServer(timeout time.Duration, handler Handler) *Server {
 	return &Server{
 		newConn:  make(chan net.Conn, 1),
 		stopping: make(chan bool, 1),
 		Timeout:  timeout,
+		Handler:  handler,
 	}
 }
 
@@ -102,9 +107,13 @@ func (s *Server) handleConnection(c net.Conn) {
 			done <- fmt.Errorf("%w: %v", ErrUnmarshal, err)
 			return
 		}
-		log.Printf("%#v\n", reqJSON)
-		// TODO add custom handler
-		b, err := json.Marshal("world")
+
+		resp, err := s.Handler(reqJSON)
+		if err != nil {
+			done <- fmt.Errorf("%w: %v", ErrHandler, err)
+		}
+
+		b, err := json.Marshal(resp)
 		if err != nil {
 			done <- fmt.Errorf("%w: %v", ErrMarshal, err)
 		}
@@ -131,9 +140,9 @@ func (s *Server) Shutdown() {
 	s.wg.Wait()
 }
 
-func Listen(host string, timeout time.Duration) {
+func Listen(host string, timeout time.Duration, handler Handler) {
 
-	s := NewServer(timeout)
+	s := NewServer(timeout, handler)
 
 	sigChannel := make(chan os.Signal, 1)
 	signal.Notify(sigChannel, syscall.SIGINT, syscall.SIGTERM)

@@ -69,7 +69,6 @@ func (c *Client) Send(body interface{}) (interface{}, error) {
 			return
 		}
 
-		time.Sleep(3 * time.Second)
 		if _, err := conn.Write(append(b, 0)); err != nil {
 			errChan <- fmt.Errorf("%w: %v", ErrWrite, err)
 			return
