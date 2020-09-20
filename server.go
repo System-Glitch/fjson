@@ -1,12 +1,10 @@
-package main
+package fjson
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -14,14 +12,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-)
-
-var (
-	ErrScan      error = errors.New("FJSON Request scanning failed")
-	ErrMarshal   error = errors.New("FJSON marshal error")
-	ErrWrite     error = errors.New("FJSON write error")
-	ErrUnmarshal error = errors.New("FJSON unmarshal error")
-	ErrHandler   error = errors.New("FJSON handler error")
 )
 
 type Server struct {
@@ -33,22 +23,6 @@ type Server struct {
 }
 
 type Handler func(data interface{}) (interface{}, error)
-
-func scanPack(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	// Scan until 0, marking end of pack.
-	for i := 0; i < len(data); i++ {
-		if data[i] == 0 {
-			return i, data[:i], nil
-		}
-	}
-
-	if atEOF {
-		return len(data), data, io.ErrUnexpectedEOF
-	}
-
-	// Request more data.
-	return 0, nil, nil
-}
 
 func NewServer(timeout time.Duration, handler Handler) *Server {
 	return &Server{

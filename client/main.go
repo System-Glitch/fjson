@@ -3,10 +3,12 @@ package main
 import (
 	"log"
 	"time"
+
+	"github.com/System-Glitch/fjson"
 )
 
 func main() {
-	client := NewClient("localhost:8080", time.Second)
+	client := fjson.NewClient("localhost:8080", time.Second)
 
 	data := map[string]interface{}{
 		"greetings": "hello",

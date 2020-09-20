@@ -1,23 +1,12 @@
-package main
+package fjson
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"time"
-)
-
-var (
-	ErrDial      error = errors.New("FJSON dial error")
-	ErrTimeout   error = errors.New("FJSON timeout")
-	ErrMarshal   error = errors.New("FJSON marshal error")
-	ErrUnmarshal error = errors.New("FJSON unmarshal error")
-	ErrWrite     error = errors.New("FJSON write error")
-	ErrRead      error = errors.New("FJSON read error")
 )
 
 type Client struct {
@@ -30,22 +19,6 @@ func NewClient(host string, timeout time.Duration) *Client {
 		Host:    host,
 		Timeout: timeout,
 	}
-}
-
-func scanPack(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	// Scan until 0, marking end of pack.
-	for i := 0; i < len(data); i++ {
-		if data[i] == 0 {
-			return i, data[:i], nil
-		}
-	}
-
-	if atEOF {
-		return len(data), data, io.ErrUnexpectedEOF
-	}
-
-	// Request more data.
-	return 0, nil, nil
 }
 
 func (c *Client) Send(body interface{}) (interface{}, error) {
