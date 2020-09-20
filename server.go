@@ -85,11 +85,13 @@ func (s *Server) handleConnection(c net.Conn) {
 		resp, err := s.Handler(reqJSON)
 		if err != nil {
 			done <- fmt.Errorf("%w: %v", ErrHandler, err)
+			return
 		}
 
 		b, err := json.Marshal(resp)
 		if err != nil {
 			done <- fmt.Errorf("%w: %v", ErrMarshal, err)
+			return
 		}
 		if _, err := c.Write(append(b, 0)); err != nil {
 			done <- fmt.Errorf("%w: %v", ErrWrite, err)
