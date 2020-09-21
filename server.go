@@ -15,8 +15,8 @@ import (
 )
 
 type Server struct {
-	stopping chan bool
-	newConn  chan net.Conn
+	done     chan struct{}
+	listener net.Listener
 	wg       sync.WaitGroup
 	Timeout  time.Duration
 	Handler  Handler
@@ -25,38 +25,39 @@ type Server struct {
 type Handler func(data interface{}) (interface{}, error)
 
 func NewServer(timeout time.Duration, handler Handler) *Server {
-	return &Server{
-		newConn:  make(chan net.Conn, 1),
-		stopping: make(chan bool, 1),
-		Timeout:  timeout,
-		Handler:  handler,
+	s := &Server{
+		done:    make(chan struct{}, 1),
+		Timeout: timeout,
+		Handler: handler,
 	}
+	return s
 }
 
-func (s *Server) Listen(host string) {
+func (s *Server) Listen(host string) error {
 	l, err := net.Listen("tcp", host)
-
 	if err != nil {
-		log.Println(err)
+		return err
 	}
+	s.listener = l
+	return nil
+}
 
+func (s *Server) Serve() {
+	l := s.listener
 	defer l.Close()
 
 	for {
-		go func() {
-			conn, err := l.Accept()
-			if err != nil {
+		conn, err := l.Accept()
+		if err != nil {
+			select {
+			case <-s.done:
 				return
+			default:
+				continue
 			}
-			s.newConn <- conn
-		}()
-		select {
-		case <-s.stopping:
-			return
-		case conn := <-s.newConn:
-			s.wg.Add(1)
-			go s.handleConnection(conn)
 		}
+		s.wg.Add(1)
+		go s.handleConnection(conn)
 	}
 }
 
@@ -112,20 +113,24 @@ func (s *Server) handleConnection(c net.Conn) {
 }
 
 func (s *Server) Shutdown() {
-	s.stopping <- true
+	s.done <- struct{}{}
+	s.listener.Close()
 	s.wg.Wait()
 }
 
-func Listen(host string, timeout time.Duration, handler Handler) {
+func ListenAndServe(host string, timeout time.Duration, handler Handler) {
 
 	s := NewServer(timeout, handler)
 
+	if err := s.Listen(host); err != nil {
+		log.Println(err)
+		return
+	}
+
 	sigChannel := make(chan os.Signal, 1)
 	signal.Notify(sigChannel, syscall.SIGINT, syscall.SIGTERM)
+	go s.Serve()
 
-	go s.Listen(host)
-
-	// No need for timeout checking, as each request can already timeout
-	<-sigChannel // Block until SIGINT or SIGTERM received
+	<-sigChannel
 	s.Shutdown()
 }
