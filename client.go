@@ -36,13 +36,19 @@ func (c *Client) Send(body interface{}) (interface{}, error) {
 	defer conn.Close()
 	go func() {
 
-		b, err := json.Marshal(body)
-		if err != nil {
-			errChan <- fmt.Errorf("%w: %v", ErrMarshal, err)
-			return
+		var payload []byte
+		if b, ok := body.([]byte); ok { // Don't marshal if content is already a byte slice
+			payload = b
+		} else {
+			b, err := json.Marshal(body)
+			if err != nil {
+				errChan <- fmt.Errorf("%w: %v", ErrMarshal, err)
+				return
+			}
+			payload = b
 		}
 
-		if _, err := conn.Write(append(b, 0)); err != nil {
+		if _, err := conn.Write(append(payload, 0)); err != nil {
 			errChan <- fmt.Errorf("%w: %v", ErrWrite, err)
 			return
 		}
