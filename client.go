@@ -14,6 +14,11 @@ type Client struct {
 	Timeout time.Duration
 }
 
+type Connection struct {
+	conn   net.Conn
+	client *Client
+}
+
 func NewClient(host string, timeout time.Duration) *Client {
 	return &Client{
 		Host:    host,
@@ -21,19 +26,25 @@ func NewClient(host string, timeout time.Duration) *Client {
 	}
 }
 
-func (c *Client) Send(body interface{}) (interface{}, error) {
+func (c *Client) Connect() (*Connection, error) {
 	var d net.Dialer
-	data := make(chan interface{}, 1)
-	errChan := make(chan error, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-
 	conn, err := d.DialContext(ctx, "tcp", c.Host)
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDial, err)
 	}
-	defer conn.Close()
+
+	return &Connection{conn, c}, nil
+}
+
+func (c *Connection) Send(body interface{}) (interface{}, error) {
+	data := make(chan interface{}, 1)
+	errChan := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), c.client.Timeout)
+	defer cancel()
+
 	go func() {
 
 		var payload []byte
@@ -48,15 +59,15 @@ func (c *Client) Send(body interface{}) (interface{}, error) {
 			payload = b
 		}
 
-		if _, err := conn.Write(append(payload, 0)); err != nil {
+		if _, err := c.conn.Write(append(payload, 0)); err != nil {
 			errChan <- fmt.Errorf("%w: %v", ErrWrite, err)
 			return
 		}
 
-		reader := bufio.NewScanner(conn)
+		reader := bufio.NewScanner(c.conn)
 		reader.Split(scanPack)
 		if !reader.Scan() {
-			errChan <- fmt.Errorf("%w: %v", ErrRead, err)
+			errChan <- ErrRead
 			return
 		}
 
@@ -76,4 +87,17 @@ func (c *Client) Send(body interface{}) (interface{}, error) {
 	case resp := <-data:
 		return resp, nil
 	}
+}
+
+func (c *Connection) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Send(body interface{}) (interface{}, error) {
+	conn, err := c.Connect()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	return conn.Send(body)
 }

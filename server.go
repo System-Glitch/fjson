@@ -2,7 +2,6 @@ package fjson
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,23 +10,20 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 )
 
 type Server struct {
 	done     chan struct{}
 	listener net.Listener
 	wg       sync.WaitGroup
-	Timeout  time.Duration
 	Handler  Handler
 }
 
 type Handler func(data interface{}) (interface{}, error)
 
-func NewServer(timeout time.Duration, handler Handler) *Server {
+func NewServer(handler Handler) *Server {
 	s := &Server{
 		done:    make(chan struct{}, 1),
-		Timeout: timeout,
 		Handler: handler,
 	}
 	return s
@@ -63,51 +59,34 @@ func (s *Server) Serve() {
 
 func (s *Server) handleConnection(c net.Conn) {
 	defer s.wg.Done()
-	defer c.Close()
 
-	done := make(chan error)
-	ctx, cancel := context.WithTimeout(context.Background(), s.Timeout)
-	defer cancel()
-
-	go func() {
+	for {
 		reader := bufio.NewScanner(c)
 		reader.Split(scanPack)
 		if !reader.Scan() {
-			done <- ErrScan
+			// log.Println(ErrScan)
 			return
 		}
-
 		var reqJSON interface{}
 		if err := json.Unmarshal(reader.Bytes(), &reqJSON); err != nil {
-			done <- fmt.Errorf("%w: %v", ErrUnmarshal, err)
+			log.Println(fmt.Errorf("%w: %v", ErrUnmarshal, err))
 			return
 		}
 
 		resp, err := s.Handler(reqJSON)
 		if err != nil {
-			done <- fmt.Errorf("%w: %v", ErrHandler, err)
+			log.Println(fmt.Errorf("%w: %v", ErrHandler, err))
 			return
 		}
 
 		b, err := json.Marshal(resp)
 		if err != nil {
-			done <- fmt.Errorf("%w: %v", ErrMarshal, err)
+			log.Println(fmt.Errorf("%w: %v", ErrMarshal, err))
 			return
 		}
 		if _, err := c.Write(append(b, 0)); err != nil {
-			done <- fmt.Errorf("%w: %v", ErrWrite, err)
+			log.Println(fmt.Errorf("%w: %v", ErrWrite, err))
 			return
-		}
-		done <- nil
-	}()
-
-	select {
-	case <-ctx.Done():
-		log.Println("connection closed early: timeout")
-		return
-	case err := <-done:
-		if err != nil {
-			log.Println(err)
 		}
 	}
 }
@@ -118,9 +97,9 @@ func (s *Server) Shutdown() {
 	s.wg.Wait()
 }
 
-func ListenAndServe(host string, timeout time.Duration, handler Handler) {
+func ListenAndServe(host string, handler Handler) {
 
-	s := NewServer(timeout, handler)
+	s := NewServer(handler)
 
 	if err := s.Listen(host); err != nil {
 		log.Println(err)

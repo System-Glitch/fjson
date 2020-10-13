@@ -12,17 +12,19 @@ import (
 )
 
 var (
-	host     string
-	port     int
-	hostStr  string
-	routines int
-	duration int
+	host        string
+	port        int
+	hostStr     string
+	routines    int
+	connections int
+	duration    int
 )
 
 func handleFlags() {
 	flag.StringVar(&host, "host", "localhost", "Host")
 	flag.IntVar(&port, "port", 8080, "Port")
 	flag.IntVar(&routines, "routines", 1, "Number of goroutines")
+	flag.IntVar(&connections, "connections", 400, "Number of open connections")
 	flag.IntVar(&duration, "duration", 30, "Number of seconds for which the benchmark will run")
 	flag.Parse()
 
@@ -42,6 +44,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	connectionCount := connections / routines
 	count := uint64(0)
 	countChan := make(chan uint64, routines)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*time.Duration(duration)))
@@ -49,6 +52,16 @@ func main() {
 
 	for i := 0; i < routines; i++ {
 		go func() {
+			conns := make([]*fjson.Connection, 0, connectionCount)
+			for j := 0; j < connectionCount; j++ {
+				newConn, err := client.Connect()
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				defer newConn.Close()
+				conns = append(conns, newConn)
+			}
 			count := uint64(0)
 			for {
 				select {
@@ -56,8 +69,10 @@ func main() {
 					countChan <- count
 					return
 				default:
-					client.Send(payload)
-					count++
+					for _, conn := range conns {
+						conn.Send(payload)
+					}
+					count += uint64(len(conns))
 				}
 			}
 		}()
@@ -70,5 +85,4 @@ func main() {
 	}
 	close(countChan)
 	log.Printf("Routines: %d | Duration: %ds | Count: %d | R/s: %d\n", routines, duration, count, count/uint64(duration))
-	// TODO benchmark here
 }
