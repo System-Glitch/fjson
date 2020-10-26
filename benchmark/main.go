@@ -47,7 +47,8 @@ func main() {
 	connectionCount := connections / routines
 	count := uint64(0)
 	countChan := make(chan uint64, routines)
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*time.Duration(duration)))
+	start := time.Now()
+	ctx, cancel := context.WithDeadline(context.Background(), start.Add(time.Second*time.Duration(duration)))
 	defer cancel()
 
 	for i := 0; i < routines; i++ {
@@ -84,5 +85,7 @@ func main() {
 		}
 	}
 	close(countChan)
-	log.Printf("Routines: %d | Duration: %ds | Count: %d | R/s: %d\n", routines, duration, count, count/uint64(duration))
+	elapsed := time.Since(start)
+	seconds := elapsed.Seconds()
+	log.Printf("Routines: %d | Duration: %.2fs | Count: %d | R/s: %.2f\n", routines, elapsed.Seconds(), count, float64(count)/seconds)
 }
