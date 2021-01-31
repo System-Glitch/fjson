@@ -11,8 +11,7 @@ func main() {
 	client := fjson.NewClient("localhost:8080", time.Second)
 
 	data := map[string]interface{}{
-		"greetings": "hello",
-		"now":       time.Now().Unix(),
+		"messages": []string{"hello", "world"},
 	}
 	resp, err := client.Send(data)
 	if err != nil {
